@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db">
+
+    <!-- ❌ BUG: OutOfMemoryError - loading too many records -->
+    <flow name="getTransactionHistoryFlow">
+        <db:select config-ref="Database_Config">
+            <!-- BUG: No pagination, loads all records -->
+            <db:sql>SELECT * FROM transactions</db:sql>
+        </db:select>
+        
+        <logger level="INFO" message="Loaded #[sizeOf(payload)] transactions"/>
+    </flow>
+</mule>
