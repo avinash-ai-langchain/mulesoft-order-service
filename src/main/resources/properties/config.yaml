@@ -1,0 +1,8 @@
+# Order Service Configuration
+database:
+  host: localhost
+  port: 3306
+# ❌ BUG: Missing required 'name' field
+
+api:
+  timeout: "30000"  # ❌ BUG: Should be integer, not string
