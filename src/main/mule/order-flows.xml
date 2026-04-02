@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:db="http://www.mulesoft.org/schema/mule/db">
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw">
 
-    <!-- ❌ BUG: OutOfMemoryError - loading too many records -->
+    <!-- ✅ FIX: Implemented pagination to prevent OutOfMemoryError -->
     <flow name="getTransactionHistoryFlow">
+        <set-variable variableName="pageSize" value="100" doc:name="Set Page Size"/>
+        <set-variable variableName="pageNumber" value="#[vars.pageNumber default 0]" doc:name="Set Page Number"/>
+        
         <db:select config-ref="Database_Config">
-            <!-- BUG: No pagination, loads all records -->
-            <db:sql>SELECT * FROM transactions</db:sql>
+            <!-- FIX: Added pagination to the SQL query -->
+            <db:sql><![CDATA[
+                SELECT * FROM transactions
+                LIMIT #[vars.pageSize]
+                OFFSET #[vars.pageNumber * vars.pageSize]
+            ]]></db:sql>
         </db:select>
         
-        <logger level="INFO" message="Loaded #[sizeOf(payload)] transactions"/>
+        <logger level="INFO" message="Loaded #[sizeOf(payload)] transactions on page #[vars.pageNumber]"/>
     </flow>
 </mule>
