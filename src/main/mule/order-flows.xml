@@ -1,14 +1,73 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:db="http://www.mulesoft.org/schema/mule/db">
+<!-- order-flows.xml -->
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns="http://www.mulesoft.org/schema/mule/core">
 
-    <!-- ❌ BUG: OutOfMemoryError - loading too many records -->
     <flow name="getTransactionHistoryFlow">
-        <db:select config-ref="Database_Config">
-            <!-- BUG: No pagination, loads all records -->
-            <db:sql>SELECT * FROM transactions</db:sql>
+
+        <!-- Example: read query params from API request -->
+        <set-variable variableName="page" value="#[(attributes.queryParams.page default 1) as Number]" />
+        <set-variable variableName="pageSizeRaw" value="#[(attributes.queryParams.pageSize default 100) as Number]" />
+
+        <!-- Enforce sane bounds -->
+        <set-variable variableName="pageSize"
+                      value="#[
+                        if (vars.pageSizeRaw > 500) 500
+                        else if (vars.pageSizeRaw < 1) 100
+                        else vars.pageSizeRaw
+                      ]" />
+        <set-variable variableName="offset" value="#[(vars.page - 1) * vars.pageSize]" />
+
+        <!-- Optional filters -->
+        <set-variable variableName="fromDate" value="#[attributes.queryParams.fromDate default null]" />
+        <set-variable variableName="toDate" value="#[attributes.queryParams.toDate default null]" />
+
+        <!-- Bounded query: fetch only needed columns -->
+        <db:select config-ref="DB_Config" doc:name="Get Transaction History Page">
+            <db:sql><![CDATA[
+                SELECT
+                    transaction_id,
+                    order_id,
+                    customer_id,
+                    amount,
+                    currency,
+                    status,
+                    created_at
+                FROM transactions
+                WHERE (:fromDate IS NULL OR created_at >= :fromDate)
+                  AND (:toDate IS NULL OR created_at < :toDate)
+                ORDER BY created_at DESC
+                LIMIT :limit OFFSET :offset
+            ]]></db:sql>
+            <db:input-parameters><![CDATA[
+                #[
+                  {
+                    fromDate: vars.fromDate,
+                    toDate: vars.toDate,
+                    limit: vars.pageSize,
+                    offset: vars.offset
+                  }
+                ]
+            ]]></db:input-parameters>
         </db:select>
-        
-        <logger level="INFO" message="Loaded #[sizeOf(payload)] transactions"/>
+
+        <!-- Optional: return pagination metadata -->
+        <ee:transform doc:name="Build Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+  page: vars.page,
+  pageSize: vars.pageSize,
+  count: sizeOf(payload),
+  data: payload
+}
+                ]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
     </flow>
 </mule>
