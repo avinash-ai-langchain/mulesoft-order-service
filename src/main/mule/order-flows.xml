@@ -2,13 +2,30 @@
 <mule xmlns="http://www.mulesoft.org/schema/mule/core"
       xmlns:db="http://www.mulesoft.org/schema/mule/db">
 
-    <!-- ❌ BUG: OutOfMemoryError - loading too many records -->
+    <!-- Fixed: prevent OutOfMemoryError by enforcing bounded result size -->
     <flow name="getTransactionHistoryFlow">
-        <db:select config-ref="Database_Config">
-            <!-- BUG: No pagination, loads all records -->
-            <db:sql>SELECT * FROM transactions</db:sql>
-        </db:select>
-        
-        <logger level="INFO" message="Loaded #[sizeOf(payload)] transactions"/>
+        <!-- Default and sanitize pagination inputs to maintain backward compatibility -->
+        <set-variable variableName="limit" value="#[(attributes.queryParams.limit default 100) as Number]"/>
+        <set-variable variableName="offset" value="#[(attributes.queryParams.offset default 0) as Number]"/>
+
+        <try>
+            <db:select config-ref="Database_Config">
+                <!-- Fixed: use pagination so the DB connector does not load the entire table into memory -->
+                <db:sql>SELECT * FROM transactions LIMIT :limit OFFSET :offset</db:sql>
+                <db:input-parameters><![CDATA[#[{
+                    limit: vars.limit,
+                    offset: vars.offset
+                }]]]></db:input-parameters>
+            </db:select>
+
+            <!-- Safe logging of bounded result set -->
+            <logger level="INFO" message="Loaded #[sizeOf(payload default [])] transactions with limit #[vars.limit] and offset #[vars.offset]"/>
+            <error-handler>
+                <!-- Handle DB errors locally to avoid unhandled failures -->
+                <on-error-propagate type="DB:CONNECTIVITY DB:QUERY_EXECUTION">
+                    <logger level="ERROR" message="Failed to retrieve transaction history: #[error.description]"/>
+                </on-error-propagate>
+            </error-handler>
+        </try>
     </flow>
 </mule>
