@@ -1,14 +1,24 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:db="http://www.mulesoft.org/schema/mule/db">
-
-    <!-- ❌ BUG: OutOfMemoryError - loading too many records -->
-    <flow name="getTransactionHistoryFlow">
-        <db:select config-ref="Database_Config">
-            <!-- BUG: No pagination, loads all records -->
-            <db:sql>SELECT * FROM transactions</db:sql>
-        </db:select>
+// Example of a paginated query in Java
+public List<Transaction> getPaginatedTransactions(int pageNumber, int pageSize) {
+    int offset = (pageNumber - 1) * pageSize;
+    String query = "SELECT * FROM transactions LIMIT ? OFFSET ?";
+    
+    try (Connection connection = dataSource.getConnection();
+         PreparedStatement preparedStatement = connection.prepareStatement(query)) {
         
-        <logger level="INFO" message="Loaded #[sizeOf(payload)] transactions"/>
-    </flow>
-</mule>
+        preparedStatement.setInt(1, pageSize);
+        preparedStatement.setInt(2, offset);
+        
+        try (ResultSet resultSet = preparedStatement.executeQuery()) {
+            List<Transaction> transactions = new ArrayList<>();
+            while (resultSet.next()) {
+                // Assume a method to map ResultSet to Transaction object
+                transactions.add(mapResultSetToTransaction(resultSet));
+            }
+            return transactions;
+        }
+    } catch (SQLException e) {
+        // Handle exceptions
+    }
+    return Collections.emptyList();
+}
